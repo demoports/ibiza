@@ -110,8 +110,6 @@ function nextDemoRandom(state, range) {
 }
 
 function addPackedPixel(buffer, pixel, color, weight) {
-  if (weight <= 0) return;
-
   // This is the component-wise equivalent of the MMX-era packed saturating
   // add in FUN_00409920.  Every contribution is even and clips at 254.
   const old = buffer[pixel];

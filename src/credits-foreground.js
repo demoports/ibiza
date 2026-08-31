@@ -125,6 +125,10 @@ function transitionWeight(progress) {
   return (8192 - COS[angle]) >> 6;
 }
 
+function blendPackedChannel(first, second, firstWeight, secondWeight) {
+  return ((first * firstWeight) >> 8) + ((second * secondWeight) >> 8);
+}
+
 export class CreditsForeground {
   constructor({ images, callbackTimes }) {
     this.colors = [
@@ -235,11 +239,12 @@ export class CreditsForeground {
       const sourceGreen = color ? color[rgb + 1] : backgroundGreen;
       const sourceBlue = color ? color[rgb + 2] : backgroundBlue;
 
-      target[rgba] = (backgroundRed * inverse + sourceRed * amount) >> 8;
-      target[rgba + 1] =
-        (backgroundGreen * inverse + sourceGreen * amount) >> 8;
-      target[rgba + 2] =
-        (backgroundBlue * inverse + sourceBlue * amount) >> 8;
+      target[rgba] = blendPackedChannel(
+        backgroundRed, sourceRed, inverse, amount);
+      target[rgba + 1] = blendPackedChannel(
+        backgroundGreen, sourceGreen, inverse, amount);
+      target[rgba + 2] = blendPackedChannel(
+        backgroundBlue, sourceBlue, inverse, amount);
     }
   }
 
@@ -265,22 +270,22 @@ export class CreditsForeground {
       const secondGreen = secondColor ? secondColor[rgb + 1] : backgroundGreen;
       const secondBlue = secondColor ? secondColor[rgb + 2] : backgroundBlue;
 
-      const mixedRed =
-        (firstRed * inverseWeight + secondRed * weight) >> 8;
-      const mixedGreen =
-        (firstGreen * inverseWeight + secondGreen * weight) >> 8;
-      const mixedBlue =
-        (firstBlue * inverseWeight + secondBlue * weight) >> 8;
+      const mixedRed = blendPackedChannel(
+        firstRed, secondRed, inverseWeight, weight);
+      const mixedGreen = blendPackedChannel(
+        firstGreen, secondGreen, inverseWeight, weight);
+      const mixedBlue = blendPackedChannel(
+        firstBlue, secondBlue, inverseWeight, weight);
       const mixedMask = (firstMask[pixel] * inverseWeight +
         secondMask[pixel] * weight) >> 8;
       const backgroundWeight = 255 - mixedMask;
 
-      target[rgba] =
-        (backgroundRed * backgroundWeight + mixedRed * mixedMask) >> 8;
-      target[rgba + 1] =
-        (backgroundGreen * backgroundWeight + mixedGreen * mixedMask) >> 8;
-      target[rgba + 2] =
-        (backgroundBlue * backgroundWeight + mixedBlue * mixedMask) >> 8;
+      target[rgba] = blendPackedChannel(
+        backgroundRed, mixedRed, backgroundWeight, mixedMask);
+      target[rgba + 1] = blendPackedChannel(
+        backgroundGreen, mixedGreen, backgroundWeight, mixedMask);
+      target[rgba + 2] = blendPackedChannel(
+        backgroundBlue, mixedBlue, backgroundWeight, mixedMask);
     }
   }
 

@@ -143,7 +143,7 @@ export class IFSEffect {
 
   add(x, y, color, weight) {
     // FUN_00401c80 clips each of the four bilinear neighbours separately.
-    if (x <= 0 || x >= WIDTH || y <= 0 || y >= HEIGHT || weight <= 0) return;
+    if (x <= 0 || x >= WIDTH || y <= 0 || y >= HEIGHT) return;
     const pixel = y * WIDTH + x;
     const old = this.pixels[pixel];
     const addRed = ((channel(color, 16) * weight) >> 8) & 0xfe;

@@ -213,8 +213,8 @@ export class Warp28Effect {
 
   buildGrid(engineTime, impact, phase) {
     const grid = this.grid;
-    const clockA = Math.trunc(engineTime * 1153);
-    const clockB = Math.trunc(engineTime * 1134);
+    const clockA = engineTime * 1153;
+    const clockB = engineTime * 1134;
     let output = 0;
     for (let row = 0, y = -49152; row < 25; row++, y += 4096) {
       for (let column = 0, x = -65536;
@@ -226,11 +226,14 @@ export class Warp28Effect {
         let radial = Math.imul(cosQ13(radiusSquared >> 3), impact) >> 12;
         radial = add32(sub32(radial, radiusSquared >> 5), 8192);
 
-        let waves = sinQ13(Math.trunc(x / 7) + clockA);
-        waves = add32(waves, sinQ13(Math.trunc(y / 7) + clockA));
-        waves = add32(waves, sinQ13(Math.trunc(x / 13) - clockB));
-        waves = add32(waves, sinQ13(Math.trunc(y / 13) - clockB));
-        const angle = Math.trunc(waves * phase + engineTime * 26);
+        let waves = sinQ13(Math.trunc(Math.trunc(x / 7) + clockA));
+        waves = add32(waves,
+          sinQ13(Math.trunc(Math.trunc(y / 7) + clockA)));
+        waves = add32(waves,
+          sinQ13(Math.trunc(Math.trunc(x / 13) - clockB)));
+        waves = add32(waves,
+          sinQ13(Math.trunc(Math.trunc(y / 13) - clockB)));
+        const angle = Math.trunc(waves * phase + Math.trunc(engineTime * 26));
 
         const scaledX = Math.imul(radial, x) >> 13;
         const scaledY = Math.imul(radial, y) >> 13;

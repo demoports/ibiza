@@ -304,8 +304,7 @@ import { LoadingEffect, LOADING_PROGRESS_SEQUENCE } from './loading-effect.js';
         temporal[out++] = (first[source + 2] * inverse + second[source + 2] * mix) >> 8;
       }
 
-      // FUN_00401130 truncates every /4 edge increment before walking the
-      // four rows and columns. This intentionally differs from ideal bilerp.
+      // FUN_00401130 walks each 4x4 cell with fixed-point /4 increments.
       const output = this.output.data;
       for (let cellY = 0; cellY < 96; cellY++) {
         for (let cellX = 0; cellX < 128; cellX++) {
@@ -1169,11 +1168,12 @@ import { LoadingEffect, LOADING_PROGRESS_SEQUENCE } from './loading-effect.js';
       const originY = Math.max(0, Math.min(HEIGHT - 1, Math.floor(centerY)));
       const xMap = new Int32Array(WIDTH);
       const yMap = new Int32Array(HEIGHT);
+      const radialScale = Math.fround(0.02);
       for (let x = 0; x < WIDTH; x++) {
-        xMap[x] = Math.trunc((originX - x) * 0.02 * 32768);
+        xMap[x] = Math.trunc((originX - x) * radialScale * 32768);
       }
       for (let y = 0; y < HEIGHT; y++) {
-        yMap[y] = Math.trunc((originY - y) * 0.02 * 32768);
+        yMap[y] = Math.trunc((originY - y) * radialScale * 32768);
       }
 
       const interpolate = (from, to, weight) =>

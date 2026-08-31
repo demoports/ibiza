@@ -315,8 +315,8 @@ export class TunnelEffect {
         output[offset] = first + (line >> 9) - center + 65408;
         output[offset + 1] = second;
       } else {
-        output[offset] = first;
-        output[offset + 1] = second + (line >> 9) - center + 65408;
+        output[offset] = second;
+        output[offset + 1] = first + (line >> 9) - center + 65408;
       }
 
       line = (line + lineStep) | 0;

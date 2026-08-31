@@ -80,6 +80,10 @@ function blendChannel(first, second, firstWeight, secondWeight) {
   return (first * firstWeight + second * secondWeight) >> 8;
 }
 
+function blendMaskedChannel(first, second, firstWeight, secondWeight) {
+  return ((first * firstWeight) >> 8) + ((second * secondWeight) >> 8);
+}
+
 function blendPacked(first, second, progress, target) {
   if (progress <= 0) {
     target.set(first);
@@ -140,16 +144,16 @@ function compositeMasked(target, first, second, firstMask, secondMask, progress)
       green = (b >>> 8) & 255;
       blue = b & 255;
     } else {
-      red = blendChannel((a >>> 16) & 255, (b >>> 16) & 255,
+      red = blendMaskedChannel((a >>> 16) & 255, (b >>> 16) & 255,
         firstWeight, secondWeight);
-      green = blendChannel((a >>> 8) & 255, (b >>> 8) & 255,
+      green = blendMaskedChannel((a >>> 8) & 255, (b >>> 8) & 255,
         firstWeight, secondWeight);
-      blue = blendChannel(a & 255, b & 255, firstWeight, secondWeight);
+      blue = blendMaskedChannel(a & 255, b & 255, firstWeight, secondWeight);
     }
 
-    red = (red * mask + ((old >>> 16) & 255) * inverseMask) >> 8;
-    green = (green * mask + ((old >>> 8) & 255) * inverseMask) >> 8;
-    blue = (blue * mask + (old & 255) * inverseMask) >> 8;
+    red = blendMaskedChannel(red, (old >>> 16) & 255, mask, inverseMask);
+    green = blendMaskedChannel(green, (old >>> 8) & 255, mask, inverseMask);
+    blue = blendMaskedChannel(blue, old & 255, mask, inverseMask);
     target[pixel] = (red << 16) | (green << 8) | blue;
   }
 }

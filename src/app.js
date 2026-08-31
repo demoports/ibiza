@@ -158,6 +158,14 @@ import { LoadingEffect, LOADING_PROGRESS_SEQUENCE } from './loading-effect.js';
     loading.writeProgressLayer(loadingPreviewContext, x, y, size);
   }
 
+  // WebKit never settles suspend() on a context that has not started running,
+  // so awaiting one strands the caller. A context that is not running is
+  // already silent; only an actually running context needs the call.
+  async function suspendAudio(audioContext) {
+    if (audioContext?.state !== 'running') return;
+    await audioContext.suspend();
+  }
+
   function makeCanvas(width, height) {
     const result = document.createElement('canvas');
     result.width = width;
@@ -543,7 +551,7 @@ import { LoadingEffect, LOADING_PROGRESS_SEQUENCE } from './loading-effect.js';
           // The native loader creates and parses the music at progress index 89,
           // but BASS_MusicPlay still waits for the click. AudioWorklet messages
           // remain serviceable while a Web Audio context is suspended.
-          await audioContext.suspend();
+          await suspendAudio(audioContext);
           await music.load(this.audioBytes);
         } catch (error) {
           music.destroy();
@@ -902,7 +910,7 @@ import { LoadingEffect, LOADING_PROGRESS_SEQUENCE } from './loading-effect.js';
           ? pausedState.time
           : fallbackTime;
         try {
-          await this.audioContext.suspend();
+          await suspendAudio(this.audioContext);
         } catch (error) {
           if (!active()) return;
           throw error;
@@ -926,7 +934,7 @@ import { LoadingEffect, LOADING_PROGRESS_SEQUENCE } from './loading-effect.js';
       cancelAnimationFrame(this.frameRequest);
       this.stopSource();
       releaseWakeLock();
-      void this.audioContext?.suspend().catch(() => {});
+      void suspendAudio(this.audioContext).catch(() => {});
       canvas.classList.remove('screen--visible');
       gate.classList.remove('gate--hidden', 'gate--error');
       startButton.disabled = false;

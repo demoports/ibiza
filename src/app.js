@@ -820,7 +820,6 @@ import { LoadingEffect, LOADING_PROGRESS_SEQUENCE } from './loading-effect.js';
         this.paused = false;
         cancelAnimationFrame(this.frameRequest);
         this.stopSource();
-        this.intro.reset();
         this.startDemoTime = Math.max(0, at);
         await this.music.seek(this.startDemoTime);
         if (superseded()) return;

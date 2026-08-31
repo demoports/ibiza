@@ -365,6 +365,19 @@ function makeChannel() {
   };
 }
 
+function cloneVoiceState(voice) {
+  return voice ? { ...voice } : null;
+}
+
+function cloneChannelState(channel) {
+  return {
+    ...channel,
+    event: channel.event ? { ...channel.event } : null,
+    triggerSnapshot: cloneVoiceState(channel.triggerSnapshot),
+    tail: cloneVoiceState(channel.tail),
+  };
+}
+
 function envelopeValue(envelope, position, fallback) {
   const points = envelope.points;
   if (!(envelope.type & 1) || !points.length) return fallback;
@@ -418,6 +431,38 @@ class XMReplayEngine {
     this.pendingPosition = null;
     this.patternEndRow = 0;
     this.channels = Array.from({ length: this.module.channels }, () => makeChannel());
+  }
+
+  captureState() {
+    return {
+      speed: this.speed,
+      bpm: this.bpm,
+      order: this.order,
+      row: this.row,
+      tick: this.tick,
+      generatedFrames: this.generatedFrames,
+      samplesUntilTick: this.samplesUntilTick,
+      samplesUntilMixerChunk: this.samplesUntilMixerChunk,
+      samplesUntilOuterMix: this.samplesUntilOuterMix,
+      pendingPosition: this.pendingPosition ? { ...this.pendingPosition } : null,
+      patternEndRow: this.patternEndRow,
+      channels: this.channels.map(cloneChannelState),
+    };
+  }
+
+  restoreState(state) {
+    this.speed = state.speed;
+    this.bpm = state.bpm;
+    this.order = state.order;
+    this.row = state.row;
+    this.tick = state.tick;
+    this.generatedFrames = state.generatedFrames;
+    this.samplesUntilTick = state.samplesUntilTick;
+    this.samplesUntilMixerChunk = state.samplesUntilMixerChunk;
+    this.samplesUntilOuterMix = state.samplesUntilOuterMix;
+    this.pendingPosition = state.pendingPosition ? { ...state.pendingPosition } : null;
+    this.patternEndRow = state.patternEndRow;
+    this.channels = state.channels.map(cloneChannelState);
   }
 
   normalizePosition() {
@@ -1205,6 +1250,10 @@ class XMReplayEngine {
 // draining that backlog. Advance at most one second of source state per live
 // quantum instead, emitting silence until the exact requested frame is ready.
 const WORKLET_SEEK_FRAMES_PER_QUANTUM = 44100;
+const SEEK_CHECKPOINT_SECONDS = 5;
+// One full interval beyond the last recovered visual callback at 331.275 s.
+const INITIAL_SEEK_CHECKPOINT_SECONDS = 335;
+const MAX_ROLLING_SEEK_CHECKPOINTS = 64;
 
 class XMWorkletProcessor extends AudioWorkletProcessor {
   constructor() {
@@ -1213,11 +1262,72 @@ class XMWorkletProcessor extends AudioWorkletProcessor {
     this.generation = 0;
     this.pendingSeek = null;
     this.pendingPlayAck = null;
+    this.seekCheckpoints = [];
+    this.fixedSeekCheckpointCount = 0;
     if (this.port) this.port.onmessage = event => this.onMessage(event.data);
   }
 
   clearPendingSeek() {
     this.pendingSeek = null;
+  }
+
+  saveSeekCheckpoint(fixed = false) {
+    const state = this.engine.captureState();
+    const last = this.seekCheckpoints[this.seekCheckpoints.length - 1];
+    if (!last || state.generatedFrames > last.generatedFrames) {
+      this.seekCheckpoints.push(state);
+    }
+    if (fixed) {
+      this.fixedSeekCheckpointCount = this.seekCheckpoints.length;
+      return;
+    }
+    while (this.seekCheckpoints.length >
+        this.fixedSeekCheckpointCount + MAX_ROLLING_SEEK_CHECKPOINTS) {
+      this.seekCheckpoints.splice(this.fixedSeekCheckpointCount, 1);
+    }
+  }
+
+  buildInitialSeekCheckpoints() {
+    this.seekCheckpoints = [this.engine.captureState()];
+    this.fixedSeekCheckpointCount = 1;
+    const checkpointFrames = Math.round(
+      this.engine.outputRate * SEEK_CHECKPOINT_SECONDS);
+    const targetFrame = Math.round(
+      this.engine.outputRate * INITIAL_SEEK_CHECKPOINT_SECONDS);
+    while (this.engine.generatedFrames < targetFrame) {
+      this.engine.fastForward(Math.min(
+        checkpointFrames, targetFrame - this.engine.generatedFrames));
+      this.saveSeekCheckpoint(true);
+    }
+    this.engine.restoreState(this.seekCheckpoints[0]);
+  }
+
+  discardRollingCheckpointsAfter(targetFrame) {
+    let length = this.seekCheckpoints.length;
+    while (length > this.fixedSeekCheckpointCount &&
+        this.seekCheckpoints[length - 1].generatedFrames > targetFrame) {
+      length--;
+    }
+    this.seekCheckpoints.length = length;
+  }
+
+  checkpointForFrame(targetFrame) {
+    let low = 0;
+    let high = this.seekCheckpoints.length - 1;
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      if (this.seekCheckpoints[middle].generatedFrames <= targetFrame) low = middle;
+      else high = middle - 1;
+    }
+    return this.seekCheckpoints[low];
+  }
+
+  extendSeekCheckpoints() {
+    const last = this.seekCheckpoints[this.seekCheckpoints.length - 1];
+    const interval = Math.round(this.engine.outputRate * SEEK_CHECKPOINT_SECONDS);
+    if (this.engine.generatedFrames - last.generatedFrames >= interval) {
+      this.saveSeekCheckpoint();
+    }
   }
 
   onMessage(message) {
@@ -1230,6 +1340,7 @@ class XMWorkletProcessor extends AudioWorkletProcessor {
           this.engine = null;
           const module = parseXM(message.buffer);
           this.engine = new XMReplayEngine(module, sampleRate);
+          this.buildInitialSeekCheckpoints();
           this.port.postMessage({
             type: 'ready',
             generation: this.generation,
@@ -1268,13 +1379,15 @@ class XMWorkletProcessor extends AudioWorkletProcessor {
             this.pendingPlayAck = null;
             this.clearPendingSeek();
             this.engine.playing = false;
-            this.engine.reset();
             const seconds = Number(message.seconds);
+            const targetFrame = Math.max(0, Math.round(
+              (Number.isFinite(seconds) ? seconds : 0) * this.engine.outputRate));
+            this.discardRollingCheckpointsAfter(targetFrame);
+            this.engine.restoreState(this.checkpointForFrame(targetFrame));
             this.pendingSeek = {
               id: message.id,
               generation: this.generation,
-              targetFrame: Math.max(0, Math.round(
-                (Number.isFinite(seconds) ? seconds : 0) * this.engine.outputRate)),
+              targetFrame,
             };
           }
           break;
@@ -1304,6 +1417,7 @@ class XMWorkletProcessor extends AudioWorkletProcessor {
       const remaining = pending.targetFrame - this.engine.generatedFrames;
       if (remaining > 0) {
         this.engine.fastForward(Math.min(remaining, WORKLET_SEEK_FRAMES_PER_QUANTUM));
+        this.extendSeekCheckpoints();
       }
       left.fill(0);
       if (right !== left) right.fill(0);
@@ -1329,6 +1443,7 @@ class XMWorkletProcessor extends AudioWorkletProcessor {
       });
     }
     this.engine.render(left, right);
+    this.extendSeekCheckpoints();
     return true;
   }
 }

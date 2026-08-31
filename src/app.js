@@ -1368,7 +1368,6 @@ import { LoadingEffect, LOADING_PROGRESS_SEQUENCE } from './loading-effect.js';
     startButton.disabled = true;
     gate.classList.remove('gate--error');
     gate.classList.add('gate--hidden');
-    status.textContent = 'starting the experience…';
     try {
       await demo.start();
     } catch (error) {

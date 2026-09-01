@@ -1,8 +1,10 @@
 // Software port of demo.exe:FUN_0040caf0/FUN_0040ccd0 (x21..x27).
 //
-// The scheduler adds this renderer at 197.475 s. FUN_0040cad0 switches its
-// material set at 216.275 s, and the particle transition removes it at
-// 225.875 s. The x41 background is a separate, lower-priority object.
+// The scheduler links this renderer at XM order 37 row 8 (197.475 s of
+// tracker time), FUN_0040cad0 switches its material set at order 41
+// (216.275 s) and the particle transition removes it at order 43 (225.875 s).
+// app.js passes those cues minus its fitted 0.2 s presentation lead. The x41
+// background is a separate, lower-priority object.
 
 const WIDTH = 512;
 const HEIGHT = 384;

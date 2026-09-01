@@ -189,7 +189,7 @@ export class EarlyTransitionChain {
         let red = Math.imul(bytes[offset], blackWeight) >> 8;
         let green = Math.imul(bytes[offset + 1], blackWeight) >> 8;
         let blue = Math.imul(bytes[offset + 2], blackWeight) >> 8;
-        if (whiteWeight > 0) {
+        if (white > 0) {
           red = Math.min(255, (Math.imul(red, oldWeight) >> 8) + whiteWeight);
           green = Math.min(255, (Math.imul(green, oldWeight) >> 8) + whiteWeight);
           blue = Math.min(255, (Math.imul(blue, oldWeight) >> 8) + whiteWeight);

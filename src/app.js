@@ -50,9 +50,21 @@ import { LoadingEffect, LOADING_PROGRESS_SEQUENCE } from './loading-effect.js';
   // Empirical callback-to-picture lead recovered from the released capture.
   // This is presentation calibration, not a claim about BASS's buffer size.
   const CALLBACK_PRESENTATION_LEAD = 0.2;
+  // The worklet reproduces BASS 0.8's tick length: bass.dll computes
+  // rate * 125 / (bpm * 50) with an integer division (1000e99b) and its mixer
+  // countdown (1000ec79) never carries the remainder, so at the module's
+  // constant 100 BPM a tick is 1102 samples rather than the nominal 1102.5.
+  // Every visual cue in this file was fitted on the nominal grid, so the
+  // visual clock counts nominal tracker seconds: wall-clock seconds divided
+  // by this ratio. Only the x7 instrument table is kept in replay frames.
+  const NOMINAL_TICK_SAMPLES = 44100 * 2.5 / 100;
+  const TICK_SCALE = Math.floor(NOMINAL_TICK_SAMPLES) / NOMINAL_TICK_SAMPLES;
   const PARTICLES_A_VISUAL = PTC_CUES.particlesA - CALLBACK_PRESENTATION_LEAD;
   const TERRAIN_VISUAL = EARLY_TRANSITION_TIMING.terrainVisual;
-  const FEEDBACK_VISUAL = EARLY_TRANSITION_TIMING.feedbackLinkVisual;
+  // The tunnel's first pass seeds itself from the framebuffer of the same
+  // scheduler walk, so the terrain keeps animating until that pass.
+  const FEEDBACK_FIRST_PASS_VISUAL =
+    EARLY_TRANSITION_TIMING.feedbackFirstUpdateVisual;
   // The released stream presents Part A at 139.333333 and the light ball on
   // the following 60 Hz picture.
   const ROCK_VISUAL = 8361 / 60;
@@ -146,7 +158,10 @@ import { LoadingEffect, LOADING_PROGRESS_SEQUENCE } from './loading-effect.js';
   };
 
   const canvas = document.querySelector('#screen');
-  const ctx = canvas.getContext('2d', { alpha: false });
+  const ctx = canvas.getContext('2d', {
+    alpha: false,
+    willReadFrequently: true
+  });
   const gate = document.querySelector('#gate');
   const startButton = document.querySelector('#start');
   const loadingPreview = document.querySelector('#loading-preview');
@@ -700,7 +715,9 @@ import { LoadingEffect, LOADING_PROGRESS_SEQUENCE } from './loading-effect.js';
     preparePrecalcDecoders() {
       this.video1 = new PrecalcDecoder(this.images.x7, 250);
       this.video2 = new PrecalcDecoder(this.images.x8, 120);
-      this.x7Strip = new X7StripEffect({ startTime: MOVIE7_REVEAL_START });
+      this.x7Strip = new X7StripEffect({
+        startTime: MOVIE7_REVEAL_START * TICK_SCALE
+      });
     }
 
     prepareRock() {
@@ -781,7 +798,7 @@ import { LoadingEffect, LOADING_PROGRESS_SEQUENCE } from './loading-effect.js';
         colorRGBA: colorMap,
         heightRGBA: heightMap,
         startTime: TERRAIN_VISUAL,
-        endTime: FEEDBACK_VISUAL
+        endTime: FEEDBACK_FIRST_PASS_VISUAL
       });
       this.earlyTransitions = new EarlyTransitionChain({
         x45: this.assetPixels('x45'),
@@ -789,11 +806,12 @@ import { LoadingEffect, LOADING_PROGRESS_SEQUENCE } from './loading-effect.js';
         x43: this.assetPixels('x43')
       });
 
-      // FUN_0040ac30 seeds its recursive surface with the last terrain frame.
+      // FUN_0040ac30 seeds its recursive surface with the terrain frame drawn
+      // in the same scheduler walk as its first pass: after the terrain and
+      // TV objects (priorities 1 and 50), before the black and white layers.
       const initial = makeCanvas(WIDTH, HEIGHT);
-      this.heightfield.render(initial.ctx, FEEDBACK_VISUAL - 1e-6);
-      this.earlyTransitions.applyTV(initial.ctx, FEEDBACK_VISUAL);
-      this.earlyTransitions.applyPersistentFades(initial.ctx, FEEDBACK_VISUAL);
+      this.heightfield.render(initial.ctx, FEEDBACK_FIRST_PASS_VISUAL - 1e-6);
+      this.earlyTransitions.applyTV(initial.ctx, FEEDBACK_FIRST_PASS_VISUAL);
       this.tunnel.initialize(initial.ctx.getImageData(0, 0, WIDTH, HEIGHT));
     }
 
@@ -964,7 +982,8 @@ import { LoadingEffect, LOADING_PROGRESS_SEQUENCE } from './loading-effect.js';
       this.frameRequest = requestAnimationFrame(this.tick);
     };
 
-    render(time) {
+    render(wallTime) {
+      const time = wallTime / TICK_SCALE;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = 'source-over';
@@ -974,8 +993,8 @@ import { LoadingEffect, LOADING_PROGRESS_SEQUENCE } from './loading-effect.js';
 
       if (time < PTC_CUES.comicStart) this.renderIntro(time);
       else if (time < MOVIE7_REVEAL_START) this.renderComicOne(time);
-      else if (time < TERRAIN_VISUAL) this.renderPrecalcOne(time);
-      else if (time < FEEDBACK_VISUAL) this.renderVoxel(time);
+      else if (time < TERRAIN_VISUAL) this.renderPrecalcOne(time, wallTime);
+      else if (time < FEEDBACK_FIRST_PASS_VISUAL) this.renderVoxel(time);
       else if (time < PARTICLES_A_VISUAL) this.renderTunnel(time);
       else if (time < ROCK_VISUAL) this.renderPartA(time);
       else if (time < IFS_VISUAL) this.renderLightBall(time);
@@ -995,13 +1014,15 @@ import { LoadingEffect, LOADING_PROGRESS_SEQUENCE } from './loading-effect.js';
       this.comic.render(ctx, time);
     }
 
-    renderPrecalcOne(time) {
+    renderPrecalcOne(time, wallTime) {
       // At order 9 row 0 the persistent black object is reset to state zero
       // and advances to one over 0.2 s.  FUN_004032d0 multiplies every channel
       // by the same quantized cosine weight before the frame is presented.
       const blackWeight = Math.min(255,
         nativeEaseByte((time - MOVIE7_REVEAL_START) / 0.2));
-      this.video1.draw(ctx, this.x7Strip.frameAt(time));
+      // The strip's instrument callbacks are replay sample frames, so its
+      // clock is the wall clock rather than nominal tracker seconds.
+      this.video1.draw(ctx, this.x7Strip.frameAt(wallTime));
       this.earlyTransitions.applyPersistentFades(ctx, time, blackWeight);
     }
 

@@ -158,9 +158,10 @@ export class IFSEffect {
   }
 
   renderPoints(time) {
-    // The PTC timer was started roughly 73 ms before BASS playback.  Cue
-    // deltas cancel that offset, but the absolute morph/rotation driver does
-    // not.
+    // demo.exe starts the PTC timer immediately after BASS_MusicPlay, so the
+    // timer runs about 73 ms ahead of audible playback (a fitted output
+    // latency).  Cue deltas cancel that offset, but the absolute
+    // morph/rotation driver does not.
     const driver = (time + this.timerLead) * DRIVER_RATE + DRIVER_ORIGIN;
     const scale = this.scaleAt(time);
     const coefficients = this.coefficients;

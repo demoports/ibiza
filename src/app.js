@@ -146,7 +146,7 @@ import { LoadingEffect, LOADING_PROGRESS_SEQUENCE } from './loading-effect.js';
   };
 
   const canvas = document.querySelector('#screen');
-  const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+  const ctx = canvas.getContext('2d', { alpha: false });
   const gate = document.querySelector('#gate');
   const startButton = document.querySelector('#start');
   const loadingPreview = document.querySelector('#loading-preview');
